@@ -1,14 +1,15 @@
-import re
 import pandas as pd
+import re
+from pathlib import Path
 
+# --- Split function (Behavior A: checkpoints included) ---
 def split_by_uat_checkpoints_include(df, checkpoint_pattern=r"(required|not required)"):
     """
     Split dataframe so each part STARTS at a row whose 'uat' matches checkpoint_pattern
-    (case-insensitive) and includes rows up to (but not including) the next checkpoint.
-    Returns a list of DataFrames (each reset_index).
+    and goes until the next checkpoint (checkpoint row included).
     """
     if "uat" not in df.columns:
-        raise ValueError("DataFrame must contain column named 'uat'")
+        raise ValueError("DataFrame must contain a column named 'uat'")
 
     r = df.reset_index(drop=True).copy()
     mask = r["uat"].astype(str).str.contains(checkpoint_pattern, flags=re.IGNORECASE, regex=True, na=False)
@@ -23,23 +24,26 @@ def split_by_uat_checkpoints_include(df, checkpoint_pattern=r"(required|not requ
         parts.append(r.iloc[start:end].reset_index(drop=True))
     return parts
 
-# ---------------------------
-# Example usage and validation
-# ---------------------------
-if __name__ == "__main__":
-    df = pd.DataFrame({
-        "admin console screen": [
-            "login", "dashboard", "settings", "profile", "help",
-            "billing", "reports", "users", "logout"
-        ],
-        "uat": [
-            "", "Required: must test", "", "", "Not Required",
-            "", "Required again", "", ""
-        ]
-    })
+# --- Save function ---
+def save_parts_to_excel(parts, workbook_path="uat_chunks.xlsx"):
+    """
+    Save list of DataFrames into a single Excel workbook, one sheet per part.
+    """
+    if not parts:
+        print("⚠️ No checkpoints found. Nothing to save.")
+        return
 
-    parts = split_by_uat_checkpoints_include(df)
+    with pd.ExcelWriter(workbook_path, engine="openpyxl") as writer:
+        for i, part in enumerate(parts, start=1):
+            sheet_name = f"Part_{i}"
+            part.to_excel(writer, sheet_name=sheet_name, index=False)
 
-    for i, p in enumerate(parts, 1):
-        print(f"\n--- Part {i} ---")
-        print(p)
+    print(f"✅ Saved {len(parts)} parts into {workbook_path}")
+
+# --- How to use with YOUR DataFrame ---
+# Example: if you already loaded your df from Excel/CSV
+# df = pd.read_excel("your_file.xlsx")   # or read_csv(...)
+# df should have at least columns: ["admin console screen", "uat"]
+
+parts = split_by_uat_checkpoints_include(df)   # df is YOUR dataframe
+save_parts_to_excel(parts, "uat_chunks.xlsx")
